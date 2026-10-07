@@ -135,7 +135,9 @@ type InternalLinkProps = {
    *   - `"auto"`, `null`, `undefined` (default): Prefetch behavior depends on static vs dynamic routes:
    *     - Static routes: fully prefetched
    *     - Dynamic routes: partial prefetch to the nearest segment with a `loading.js`
-   *   - `true`: Always prefetch the full route and data.
+   *   - `true` or `"prefetch"`: Always prefetch the full route and data.
+   *   - `"navigation"`: Prefetch up to where `navigation()` resolves. Without
+   *     Partial Prefetching, this is the same as `true`.
    *   - `false`: Disable prefetching on both viewport and hover.
    * - In the **Pages Router**:
    *   - `true` (default): Prefetches the route and data in the background on viewport or hover.
@@ -150,7 +152,7 @@ type InternalLinkProps = {
    * </Link>
    * ```
    */
-  prefetch?: boolean | 'auto' | null
+  prefetch?: boolean | 'auto' | 'prefetch' | 'navigation' | null
 
   /**
    * (unstable) Switch to a full prefetch on hover. Effectively the same as
@@ -376,12 +378,23 @@ export default function LinkComponent(
   const router = React.useContext(AppRouterContext)
 
   const prefetchEnabled = prefetchProp !== false
-  const prefetchIntent: RouterTransitionPrefetchIntent =
-    prefetchProp === false ? 'none' : prefetchProp === true ? 'full' : 'auto'
-
   // TODO: it makes no sense to assign a stage when prefetching is disabled.
-  const prefetchStage =
-    prefetchProp === true ? AppStage.Prefetch : AppStage.Shell
+  let prefetchStage: AppStage
+  switch (prefetchProp) {
+    case true:
+    case 'prefetch':
+      prefetchStage = AppStage.Prefetch
+      break
+    case 'navigation':
+      prefetchStage = AppStage.Navigation
+      break
+    case false:
+    case 'auto':
+    case null:
+    default:
+      prefetchStage = AppStage.Shell
+      break
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     function createPropError(args: {
@@ -484,11 +497,13 @@ export default function LinkComponent(
         if (
           props[key] != null &&
           valType !== 'boolean' &&
-          props[key] !== 'auto'
+          props[key] !== 'auto' &&
+          props[key] !== 'prefetch' &&
+          props[key] !== 'navigation'
         ) {
           throw createPropError({
             key,
-            expected: '`boolean | "auto"`',
+            expected: '`boolean | "auto" | "prefetch" | "navigation"`',
             actual: valType,
           })
         }
@@ -685,6 +700,17 @@ export default function LinkComponent(
       if (e.defaultPrevented) {
         return
       }
+      // This is only reported to `onRouterTransitionStart`, which is public
+      // API, so every value that asks for more than the shell is reported as
+      // `'full'`.
+      const prefetchIntent: RouterTransitionPrefetchIntent =
+        prefetchProp === false
+          ? 'none'
+          : prefetchProp === true ||
+              prefetchProp === 'prefetch' ||
+              prefetchProp === 'navigation'
+            ? 'full'
+            : 'auto'
       linkClicked(
         e,
         formattedHref,
