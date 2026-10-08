@@ -589,7 +589,6 @@ async function generateDynamicRSCPayload(
     skipPageRendering?: boolean
     staleTimeIterable?: AsyncIterable<number>
     shellByteLengthPromise?: Promise<number | null>
-    shellUsedSessionDataPromise?: Promise<boolean>
     runtimePrefetchStream?: ReadableStream<Uint8Array>
   }
 ): Promise<RSCPayload> {
@@ -744,9 +743,6 @@ async function generateDynamicRSCPayload(
 
   if (options?.shellByteLengthPromise !== undefined) {
     baseResponse.a = options.shellByteLengthPromise
-  }
-  if (options?.shellUsedSessionDataPromise !== undefined) {
-    baseResponse.w = options.shellUsedSessionDataPromise
   }
 
   if (options?.runtimePrefetchStream !== undefined) {
@@ -1139,7 +1135,6 @@ async function spawnRuntimePrefetchWithFilledCaches(
     // We want to be able to rewind the result to a session shell.
     const mode: RuntimePrerenderMode & { type: 'navigation' } = {
       type: 'navigation',
-      shellUsedSessionDataDeferred: createPromiseWithResolvers(),
       shellByteLengthDeferred: createPromiseWithResolvers(),
     }
 
@@ -1149,7 +1144,6 @@ async function spawnRuntimePrefetchWithFilledCaches(
       generateDynamicRSCPayload.bind(null, ctx, {
         staleTimeIterable,
         shellByteLengthPromise: mode.shellByteLengthDeferred.promise,
-        shellUsedSessionDataPromise: mode.shellUsedSessionDataDeferred.promise,
       }),
       prerenderResumeDataCache,
       rootParams,
@@ -1526,11 +1520,9 @@ async function generateRuntimePrefetchResult(
   const mode: RuntimePrerenderMode = isShellPrefetch
     ? {
         type: 'session-shell-only',
-        shellUsedSessionDataDeferred: createPromiseWithResolvers(),
       }
     : {
         type: 'rewindable-session-shell',
-        shellUsedSessionDataDeferred: createPromiseWithResolvers(),
         shellByteLengthDeferred: createPromiseWithResolvers(),
       }
 
@@ -1561,7 +1553,6 @@ async function generateRuntimePrefetchResult(
         mode.type === 'rewindable-session-shell'
           ? mode.shellByteLengthDeferred.promise
           : undefined,
-      shellUsedSessionDataPromise: mode.shellUsedSessionDataDeferred.promise,
     }),
     prerenderResumeDataCache,
     rootParams,
@@ -1752,16 +1743,13 @@ function prependIsPartialByteToChunks(
 type RuntimePrerenderMode =
   | {
       type: 'session-shell-only'
-      shellUsedSessionDataDeferred: PromiseWithResolvers<boolean>
     }
   | {
       type: 'rewindable-session-shell'
-      shellUsedSessionDataDeferred: PromiseWithResolvers<boolean>
       shellByteLengthDeferred: PromiseWithResolvers<number | null>
     }
   | {
       type: 'navigation'
-      shellUsedSessionDataDeferred: PromiseWithResolvers<boolean>
       shellByteLengthDeferred: PromiseWithResolvers<number | null>
     }
 
@@ -1951,12 +1939,6 @@ async function finalRuntimeServerPrerender(
     },
     () => {
       if (checkUnexpectedAbort()) return
-
-      // Check if session data unblocked new content in the shell.
-      const didSessionDataUnblockNewContent =
-        stageByteLengths[RenderStage.ShellRuntime] >
-        stageByteLengths[RenderStage.Static]
-      mode.shellUsedSessionDataDeferred.resolve(didSessionDataUnblockNewContent)
 
       if ('shellByteLengthDeferred' in mode) {
         // If advancing to the PrefetchRuntime stage didn't unblock new content,
