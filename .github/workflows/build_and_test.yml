@@ -909,7 +909,8 @@ jobs:
     with:
       # Keep Next.js related env variables in sync with additionalEnv in next-deploy.ts
       afterBuild: |
-        export NEXT_ENABLE_ADAPTER=1
+        # TEMPORARY (do not merge): exercise the legacy builder.
+        export NEXT_ENABLE_ADAPTER=0
         export NEXT_TEST_DEPLOY_TARGET_VERCEL=1
         export NEXT_E2E_TEST_TIMEOUT=240000
         export __NEXT_EXPERIMENTAL_STRICT_ROUTE_TYPES=true

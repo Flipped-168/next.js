@@ -1,9 +1,9 @@
-import { nextTestSetup } from 'e2e-utils'
+import { isNextStart, nextTestSetup } from 'e2e-utils'
 import type * as Playwright from 'playwright'
 
-// Reproduces, without a Vercel deployment, the
-// `basepath-fallback-params` client-navigation failure on the legacy
-// (non-adapter) deploy leg.
+// Regression test for the `basepath-fallback-params` client-navigation failure
+// on the legacy (non-adapter) Vercel deploy target, where `useParams()`
+// rendered an opaque `%%drp:itemId:<hash>%%` placeholder.
 //
 // Evidence from the failing deployment:
 // - A full navigation to `/dashboard/items/expected-id` was served from
@@ -12,41 +12,49 @@ import type * as Playwright from 'playwright'
 // - The fallback shell has no postponed state. For such a shell, the legacy
 //   builder configures the navigation data route with `allowQuery: []`.
 //
-// The test emulates that routing locally. It renders the param-free
-// route-template request in minimal mode and serves the result to a real
-// concrete client navigation. The platform-to-function request is an
-// inference from the builder configuration, not a captured request.
+// When deployed, this performs the navigation for real. With `next start`, it
+// emulates that legacy serving path in minimal mode: it renders the param-free
+// route-template request and serves the result to a real concrete client
+// navigation. The platform-to-function request is an inference from the
+// builder configuration, not a captured request.
 describe('basepath-fallback-params-minimal-mode', () => {
   const { next } = nextTestSetup({
     files: __dirname,
-    // This invokes the renderer the way the platform does, bypassing a
-    // deployment's public router. The real-deployment behavior is covered by
-    // the deploy suite, not by this local emulation.
-    skipDeployment: true,
-    env: {
-      // Keep `x-matched-path`, which the platform sets, on the request.
-      NEXT_PRIVATE_TEST_HEADERS: '1',
-      NEXT_PRIVATE_MINIMAL_MODE: '1',
-    },
+    env: isNextStart
+      ? {
+          // Keep `x-matched-path`, which the platform sets, on the request.
+          NEXT_PRIVATE_TEST_HEADERS: '1',
+          NEXT_PRIVATE_MINIMAL_MODE: '1',
+        }
+      : {},
   })
 
-  it('does not generate postponed state for the fallback shell', async () => {
-    const metadata = await next.readJSON('.next/server/app/items/[itemId].meta')
-    expect(metadata.postponed).toBeUndefined()
-  })
+  if (isNextStart) {
+    it('does not generate postponed state for the fallback shell', async () => {
+      const metadata = await next.readJSON(
+        '.next/server/app/items/[itemId].meta'
+      )
+      expect(metadata.postponed).toBeUndefined()
+    })
+  }
 
-  it('renders the concrete param after a navigation served from the shared fallback data route', async () => {
+  it('renders the concrete param after a navigation without prefetching', async () => {
     let servedSharedResponse = false
     const browser = await next.browser('/dashboard', {
       async beforePageLoad(page: Playwright.Page) {
+        if (!isNextStart) {
+          return
+        }
+
         await page.route('**/dashboard/items/expected-id?**', async (route) => {
-          const request = route.request()
-          const headers = request.headers()
+          const headers = route.request().headers()
           if (headers.rsc !== '1' || headers['next-router-prefetch']) {
             await route.continue()
             return
           }
 
+          // Serve the shared fallback data route the legacy builder selects:
+          // the param is stripped, so the function renders the route template.
           servedSharedResponse = true
           const response = await next.fetch('/dashboard/items/[itemId]', {
             headers: { 'x-matched-path': '/items/[itemId]', rsc: '1' },
@@ -66,6 +74,6 @@ describe('basepath-fallback-params-minimal-mode', () => {
     await browser.elementByCss('a').click()
 
     expect(await browser.elementById('item-id').text()).toBe('expected-id')
-    expect(servedSharedResponse).toBe(true)
+    expect(servedSharedResponse).toBe(isNextStart)
   })
 })
