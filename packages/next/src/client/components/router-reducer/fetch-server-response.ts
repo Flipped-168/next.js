@@ -705,6 +705,20 @@ function decodeFlightResponse<T>(
   headers: RequestHeaders,
   signal: AbortSignal | undefined
 ): Promise<T> & { _debugInfo?: Array<any> } {
+  if (process.env.__NEXT_DEV_SERVER && !process.env.TURBOPACK) {
+    // Navigating to a route that hasn't been compiled yet triggers a webpack
+    // rebuild, and the client applies the resulting hot update in parallel
+    // with this request. Don't let the Flight client process the response
+    // until that update has been applied. Otherwise, server logs that React
+    // replays during decoding (e.g. errors) reach the dev overlay before the
+    // Fast Refresh completes, and the refresh clears them again.
+    const { waitForWebpackRuntimeHotUpdate } =
+      require('../../dev/hot-reloader/app/hot-reloader-app') as typeof import('../../dev/hot-reloader/app/hot-reloader-app')
+    fetchPromise = fetchPromise.then(async (response) => {
+      await waitForWebpackRuntimeHotUpdate()
+      return response
+    })
+  }
   if (
     process.env.__NEXT_DEV_SERVER &&
     process.env.__NEXT_SERVER_COMPONENTS_HMR_CANCELLATION &&
