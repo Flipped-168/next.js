@@ -1,3 +1,4 @@
+import type { Page, Route } from '../../shared/lib/route-types'
 import type { AsyncLocalStorage } from 'async_hooks'
 import type { IncrementalCache } from '../lib/incremental-cache'
 import type { FetchMetrics } from '../base-http'
@@ -19,13 +20,13 @@ export interface WorkStore {
   /**
    * The page that is being rendered. This relates to the path to the page file.
    */
-  readonly page: string
+  readonly page: Page
 
   /**
-   * The route that is being rendered. This is the page property without the
-   * trailing `/page` or `/route` suffix.
+   * The route that is being rendered. This is the normalized URL pathname,
+   * without app-specific groups, slots or trailing `/page` or `/route` suffixes.
    */
-  readonly route: string
+  readonly route: Route
 
   readonly incrementalCache?: IncrementalCache
   readonly cacheLifeProfiles: ResolvedCacheLifeProfiles
@@ -185,7 +186,7 @@ export interface WorkStore {
    * that registry in its own thread from the route it validates, so it relies
    * on this to know which other manifests to register.
    */
-  additionalClientReferenceManifestPages?: Set<string>
+  additionalClientReferenceManifestPages?: Set<Page>
 
   /**
    * Run the given function inside a clean AsyncLocalStorage snapshot. This is

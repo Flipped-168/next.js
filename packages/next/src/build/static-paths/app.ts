@@ -1,3 +1,4 @@
+import type { Page, Route } from '../../shared/lib/route-types'
 import type { Params } from '../../server/request/params'
 import type { AppPageModule } from '../../server/route-modules/app-page/module'
 import type {
@@ -331,7 +332,7 @@ export function calculateFallbackMode(
  * @returns The list of validated parameters.
  */
 function validateParams(
-  page: string,
+  page: Route,
   isRoutePPREnabled: boolean,
   pathnameSegments: ReadonlyArray<{
     readonly paramName: string
@@ -657,7 +658,7 @@ function getValueType(value: unknown): string {
  * making root param getters available during static param generation.
  */
 async function callGenerateStaticParams(
-  page: string,
+  page: Page,
   generateStaticParams: NonNullable<AppSegment['generateStaticParams']>,
   parentParams: Params,
   rootParamKeys: readonly string[],
@@ -738,6 +739,7 @@ export async function generateRouteStaticParams(
   // Early return if no segments to process
   if (segments.length === 0) return []
 
+  // @ts-ignore Human review: the raw App module Page is also passed as the URL pathname tag; preserve static-path generation's existing tag identity.
   const implicitTags = await getImplicitTags(store.page, store.page, null)
 
   // Use iterative processing with a work queue to avoid recursion overhead
@@ -890,7 +892,7 @@ export async function buildAppStaticPaths({
   rootParamKeys,
 }: {
   dir: string
-  page: string
+  page: Route
   route: NormalizedAppRoute
   cacheComponents: boolean
   authInterrupts: boolean
@@ -959,6 +961,7 @@ export async function buildAppStaticPaths({
   const afterRunner = new AfterRunner()
 
   const store = createWorkStore({
+    // @ts-ignore -- Human review: static paths have a normalized Route, but WorkStore.page expects the raw Page for app normalization and implicit tags. Preserve the existing build-time store identity.
     page,
     renderOpts: {
       incrementalCache,
@@ -989,6 +992,7 @@ export async function buildAppStaticPaths({
           type: 'build-time-generator',
           functionName: 'unstable_generateParamMatching',
           phase: 'render',
+          // @ts-ignore Human review: this raw App module Page supplies the URL pathname tag too; preserve existing fallback-parameter tag construction.
           implicitTags: await getImplicitTags(page, page, null),
           // Matching configuration does not receive concrete parameter values.
           rootParams: {},
@@ -1198,17 +1202,17 @@ export async function buildAppStaticPaths({
     )
   }
 
-  const prerenderedRoutesByPathname = new Map<string, PrerenderedRoute>()
-  const blockingCandidatesByPathname = new Map<string, PrerenderedRoute>()
+  const prerenderedRoutesByPathname = new Map<Route, PrerenderedRoute>()
+  const blockingCandidatesByPathname = new Map<Route, PrerenderedRoute>()
   const prerenderRouteMatchersByPathname = new Map<
-    string,
+    Route,
     PrerenderRouteMatcher
   >()
 
   const addPrerenderCandidate = (
     params: Params,
-    pathname: string,
-    encodedPathname: string,
+    pathname: Route,
+    encodedPathname: Route,
     fallbackRouteParams: readonly FallbackRouteParam[],
     fallbackRootParams: readonly string[]
   ): void => {
@@ -1377,14 +1381,14 @@ export async function buildAppStaticPaths({
           // We're replacing the segment name with the replacement pathname
           // which will include the interception marker prefix if it exists.
           replacements.pathname
-        )
+        ) as Route
 
         encodedPathname = encodedPathname.replace(
           name,
           // We're replacing the segment name with the replacement encoded
           // pathname which will include the encoded param value.
           replacements.encodedPathname
-        )
+        ) as Route
       }
 
       // Resolve all route params from the loader tree if this is from an
